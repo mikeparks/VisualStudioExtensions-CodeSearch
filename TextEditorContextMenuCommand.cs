@@ -182,13 +182,13 @@ namespace CodeSearch
                 var encodedSelection = HttpUtility.UrlEncode(selection.Text);
                 var searchURL = string.Empty;
 
-                if (sourceControlURL.Contains(visualStudioBaseURL)) //VisualStudioOnline
-                {
-                    searchURL = string.Format("{0}/_search?type=Code&lp=search-project&text={1}&preview=1&_a=contents", sourceControlURL, encodedSelection);
-                }
-                else if (sourceControlURL.Contains(gitHubBaseURL)) //GitHub
+                if (sourceControlURL.Contains(gitHubBaseURL)) //GitHub
                 {
                     searchURL = string.Format("{0}/search?q={1}", sourceControlURL, encodedSelection);
+                }
+                else //VisualStudioOnline or network hosted TFS Server
+                {
+                    searchURL = string.Format("{0}/_search?type=Code&lp=search-project&text={1}&preview=1&_a=contents", sourceControlURL, encodedSelection);
                 }
 
                 System.Diagnostics.Process.Start(searchURL);
