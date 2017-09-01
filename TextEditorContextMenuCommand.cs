@@ -11,6 +11,8 @@ using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using EnvDTE;
 using System.Web;
+using LibGit2Sharp;
+using System.IO;
 
 namespace CodeSearch
 {
@@ -19,6 +21,9 @@ namespace CodeSearch
     /// </summary>
     internal sealed class TextEditorContextMenuCommand
     {
+        private const string visualStudioBaseURL = "visualstudio.com";
+        private const string gitHubBaseURL = "github.com";
+
         /// <summary>
         /// Command ID.
         /// </summary>
@@ -114,57 +119,95 @@ namespace CodeSearch
             try
             {
                 DTE dte = (DTE)this.ServiceProvider.GetService(typeof(DTE));
+                var sourceControlURL = string.Empty;
 
-                /****** Reflection Hacks to access private DLLs for both Visual Studio 2015 and Visual Studio 2017 ******/
-                var ext = dte.GetObject("Microsoft.VisualStudio.TeamFoundation.TeamFoundationServerExt");
-
-                System.Type type = ext.GetType();
-                System.Reflection.PropertyInfo property = type.GetProperty("ActiveProjectContext");
-                object activeProjectContext = property.GetValue(ext);
-
-                System.Type type2 = activeProjectContext.GetType();
-                System.Reflection.PropertyInfo property2 = type2.GetProperty("DomainUri");
-                object domainUri = property2.GetValue(activeProjectContext);
-                /********************************************************************************************************/
-
-                var tfsURL = domainUri.ToString();
-
-                if (!string.IsNullOrEmpty(tfsURL) && dte.ActiveDocument != null)
+                // 1.) Get TFS URL
+                //Plan A - Team Explorer Reflection
+                try
                 {
-                    var selection = (TextSelection)dte.ActiveDocument.Selection;
-                    var encodedSelection = HttpUtility.UrlEncode(selection.Text);
-                    var searchURL = string.Format("{0}/_search?type=Code&lp=search-project&text={1}&preview=1&_a=contents", tfsURL, encodedSelection);
+                    /****** Reflection Hacks to access private DLLs for both Visual Studio 2015 and Visual Studio 2017 ******/
+                    var ext = dte.GetObject("Microsoft.VisualStudio.TeamFoundation.TeamFoundationServerExt");
 
-                    System.Diagnostics.Process.Start(searchURL);
+                    System.Type type = ext.GetType();
+                    System.Reflection.PropertyInfo property = type.GetProperty("ActiveProjectContext");
+                    object activeProjectContext = property.GetValue(ext);
+
+                    System.Type type2 = activeProjectContext.GetType();
+                    System.Reflection.PropertyInfo property2 = type2.GetProperty("DomainUri");
+                    object domainUri = property2.GetValue(activeProjectContext);
+
+                    sourceControlURL = domainUri.ToString();
+                    /********************************************************************************************************/
                 }
-                else
+                catch (Exception ex)
                 {
-                    string message = string.Format(CultureInfo.CurrentCulture, "Could not find active Team Foundation Server connection.", this.GetType().FullName);
-                    string title = "Code Search Extension";
-
-                    VsShellUtilities.ShowMessageBox(
-                        this.ServiceProvider,
-                        message,
-                        title,
-                        OLEMSGICON.OLEMSGICON_INFO,
-                        OLEMSGBUTTON.OLEMSGBUTTON_OK,
-                        OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
+                    //Swallowing this exception on purpose
                 }
+
+                //Get TFS or GitHub URL - Plan B - LibGit2Sharp
+                if (string.IsNullOrEmpty(sourceControlURL))
+                {
+                    var directory = new DirectoryInfo(dte.ActiveDocument.Path);
+                    while (directory.Parent != null && directory.Parent.Name != directory.Root.Name)
+                    {
+                        if (Repository.IsValid(directory.FullName))
+                        {
+                            using (var repo = new Repository(directory.FullName))
+                            {
+                                var origin = repo.Network.Remotes["origin"].Url;
+                                var uri = new Uri(origin);
+                                var root = uri.GetLeftPart(UriPartial.Authority);
+                                var projectCollection = uri.Segments[1];
+
+                                if (root.Contains(visualStudioBaseURL)) //VisualStudioOnline
+                                {
+                                    sourceControlURL = String.Format("{0}/{1}", root, projectCollection);
+                                }
+                                else if (root.Contains(gitHubBaseURL)) //GitHub
+                                {
+                                    var gitHubRepo = uri.Segments[2].Replace(".git", string.Empty);
+                                    sourceControlURL = String.Format("{0}/{1}/{2}", root, projectCollection, gitHubRepo);
+                                }
+
+                                break;
+                            }
+                        }
+
+                        directory = directory.Parent;
+                    }
+                }
+
+                //2.) Open Browser with Search URL
+                var selection = (TextSelection)dte.ActiveDocument.Selection;
+                var encodedSelection = HttpUtility.UrlEncode(selection.Text);
+                var searchURL = string.Empty;
+
+                if (sourceControlURL.Contains(gitHubBaseURL)) //GitHub
+                {
+                    searchURL = string.Format("{0}/search?q={1}", sourceControlURL, encodedSelection);
+                }
+                else //VisualStudioOnline or network hosted TFS Server
+                {
+                    searchURL = string.Format("{0}/_search?type=Code&lp=search-project&text={1}&preview=1&_a=contents", sourceControlURL, encodedSelection);
+                }
+
+                System.Diagnostics.Process.Start(searchURL);
             }
             catch (Exception ex)
             {
-                string message = string.Format(CultureInfo.CurrentCulture, ex.Message + ex.StackTrace, this.GetType().FullName);
-                string title = "Code Search Extension MenuItemCallback Error";
-
-                VsShellUtilities.ShowMessageBox(
-                    this.ServiceProvider,
-                    message,
-                    title,
-                    OLEMSGICON.OLEMSGICON_INFO,
-                    OLEMSGBUTTON.OLEMSGBUTTON_OK,
-                    OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
+                ShowError(string.Format(CultureInfo.CurrentCulture, ex.Message + ex.StackTrace, this.GetType().FullName));
             }
+        }
 
+        private void ShowError(string message)
+        {
+            VsShellUtilities.ShowMessageBox(
+                this.ServiceProvider,
+                string.Format(CultureInfo.CurrentCulture, message, this.GetType().FullName),
+                "Code Search Extension",
+                OLEMSGICON.OLEMSGICON_INFO,
+                OLEMSGBUTTON.OLEMSGBUTTON_OK,
+                OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
         }
     }
 }
