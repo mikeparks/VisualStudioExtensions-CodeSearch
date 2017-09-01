@@ -1,10 +1,12 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
-    <Identity Id="CodeSearch.Michael Parks.90337458-1cc8-4ea0-9930-1e2673246b8c" Version="1.0" Language="en-US" Publisher="Michael Parks" />
+    <Identity Id="CodeSearch.Michael Parks.90337458-1cc8-4ea0-9930-1e2673246b8c" Version="1.1" Language="en-US" Publisher="Michael Parks" />
     <DisplayName>Code Search - Visual Studio Text Editor</DisplayName>
     <Description xml:space="preserve">Adds Code Search to Visual Studio Text Editor context menu to search by highlighted text.</Description>
+    <MoreInfo>http://geekswithblogs.net/MikeParks/archive/2017/08/03/244580.aspx</MoreInfo>
     <Icon>Resources\Logo2.png</Icon>
+    <PreviewImage>Resources\Logo2.png</PreviewImage>
   </Metadata>
   <Installation>
     <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[14.0,15.0]" />
